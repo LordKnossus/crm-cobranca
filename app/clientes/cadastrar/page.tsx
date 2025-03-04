@@ -1,31 +1,34 @@
 'use client';
 
 import { useState } from 'react';
-import { Card, TextInput, Button } from '@tremor/react';
 import { useRouter } from 'next/navigation';
-import { validateDocument, formatDocument } from '@/utils/documentValidation';
 import BackButton from '@/components/BackButton';
+import { cadastrarCliente } from '@/utils/supabaseClient';
+import EstadoSelect from '@/components/EstadoSelect';
 
-interface FormData {
+interface Endereco {
+  rua: string;
+  numero: string;
+  bairro: string;
+  cidade: string;
+  estado: string;
+  cep: string;
+}
+
+interface ClienteForm {
   nome: string;
   documento: string;
-  observacoes: string;
-  endereco: {
-    rua: string;
-    numero: string;
-    bairro: string;
-    cidade: string;
-    estado: string;
-    cep: string;
-  };
+  endereco: Endereco;
+  observacoes?: string;
 }
 
 export default function CadastrarCliente() {
   const router = useRouter();
-  const [formData, setFormData] = useState<FormData>({
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string>('');
+  const [formData, setFormData] = useState<ClienteForm>({
     nome: '',
     documento: '',
-    observacoes: '',
     endereco: {
       rua: '',
       numero: '',
@@ -34,38 +37,24 @@ export default function CadastrarCliente() {
       estado: '',
       cep: '',
     },
+    observacoes: '',
   });
-  const [error, setError] = useState<string>('');
-  const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
     setLoading(true);
+    setError('');
 
-    if (!validateDocument(formData.documento)) {
-      setError('CPF/CNPJ inválido');
+    // Validação do documento
+    const documentoLimpo = formData.documento.replace(/\D/g, '');
+    if (documentoLimpo.length !== 11 && documentoLimpo.length !== 14) {
+      setError('CPF deve ter 11 dígitos ou CNPJ deve ter 14 dígitos');
       setLoading(false);
       return;
     }
 
     try {
-      const response = await fetch('/api/clientes', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          ...formData,
-          documento: formData.documento,
-        }),
-      });
-
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.message || 'Erro ao cadastrar cliente');
-      }
-
+      await cadastrarCliente(formData);
       router.push('/clientes/gerenciar');
       router.refresh();
     } catch (err: any) {
@@ -75,9 +64,42 @@ export default function CadastrarCliente() {
     }
   };
 
-  const handleDocumentoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const formatted = formatDocument(e.target.value);
-    setFormData(prev => ({ ...prev, documento: formatted }));
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    const target = e.target as HTMLInputElement | HTMLTextAreaElement;
+    const { name, value } = target;
+    if (name.startsWith('endereco.')) {
+      const enderecoField = name.split('.')[1];
+      setFormData(prev => ({
+        ...prev,
+        endereco: {
+          ...prev.endereco,
+          [enderecoField]: value
+        }
+      }));
+    } else if (name === 'documento') {
+      // Remove todos os caracteres não numéricos
+      const numeros = value.replace(/\D/g, '');
+      
+      // Formata o documento baseado no tamanho
+      let documentoFormatado = numeros;
+      if (numeros.length <= 11) {
+        // Formato CPF: 123.456.789-00
+        documentoFormatado = numeros.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
+      } else {
+        // Formato CNPJ: 12.345.678/0001-00
+        documentoFormatado = numeros.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5');
+      }
+
+      setFormData(prev => ({
+        ...prev,
+        [name]: documentoFormatado
+      }));
+    } else {
+      setFormData(prev => ({
+        ...prev,
+        [name]: value
+      }));
+    }
   };
 
   return (
@@ -86,156 +108,148 @@ export default function CadastrarCliente() {
         <div className="mb-4">
           <BackButton className="btn-secondary" />
         </div>
-        
-        <form onSubmit={handleSubmit} className="space-y-6">
+
+        <div className="section-card">
+          <h2 className="section-title">Cadastrar Cliente</h2>
+
           {error && (
-            <div className="p-4 bg-red-100 text-red-700 rounded-md">
+            <div className="p-4 bg-red-100 text-red-700 rounded-md mb-4">
               {error}
             </div>
           )}
-          
-          <div className="section-card">
-            <h2 className="section-title">DADOS PESSOAIS</h2>
-            <div className="form-group">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Nome</label>
-                <TextInput
-                  name="nome"
-                  value={formData.nome}
-                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData(prev => ({ ...prev, nome: e.target.value }))}
-                  placeholder="Nome do cliente"
-                  className="form-input"
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">CPF/CNPJ</label>
-                <TextInput
-                  name="documento"
-                  value={formData.documento}
-                  onChange={handleDocumentoChange}
-                  placeholder="000.000.000-00 ou 00.000.000/0000-00"
-                  className="form-input"
-                  required
-                />
-              </div>
-            </div>
-          </div>
 
-          <div className="section-card">
-            <h2 className="section-title">ENDEREÇO</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Rua</label>
-                <TextInput
-                  name="rua"
-                  value={formData.endereco.rua}
-                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData(prev => ({
-                    ...prev,
-                    endereco: { ...prev.endereco, rua: e.target.value }
-                  }))}
-                  placeholder="Rua"
-                  className="form-input"
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Número</label>
-                <TextInput
-                  name="numero"
-                  value={formData.endereco.numero}
-                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData(prev => ({
-                    ...prev,
-                    endereco: { ...prev.endereco, numero: e.target.value }
-                  }))}
-                  placeholder="Número"
-                  className="form-input"
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Bairro</label>
-                <TextInput
-                  name="bairro"
-                  value={formData.endereco.bairro}
-                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData(prev => ({
-                    ...prev,
-                    endereco: { ...prev.endereco, bairro: e.target.value }
-                  }))}
-                  placeholder="Bairro"
-                  className="form-input"
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Cidade</label>
-                <TextInput
-                  name="cidade"
-                  value={formData.endereco.cidade}
-                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData(prev => ({
-                    ...prev,
-                    endereco: { ...prev.endereco, cidade: e.target.value }
-                  }))}
-                  placeholder="Cidade"
-                  className="form-input"
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Estado</label>
-                <TextInput
-                  name="estado"
-                  value={formData.endereco.estado}
-                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData(prev => ({
-                    ...prev,
-                    endereco: { ...prev.endereco, estado: e.target.value }
-                  }))}
-                  placeholder="Estado"
-                  className="form-input"
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">CEP</label>
-                <TextInput
-                  name="cep"
-                  value={formData.endereco.cep}
-                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData(prev => ({
-                    ...prev,
-                    endereco: { ...prev.endereco, cep: e.target.value }
-                  }))}
-                  placeholder="CEP"
-                  className="form-input"
-                  required
-                />
-              </div>
-            </div>
-          </div>
-
-          <div className="section-card">
-            <h2 className="section-title">OBSERVAÇÕES</h2>
+          <form onSubmit={handleSubmit} className="space-y-6">
             <div>
-              <TextInput
-                name="observacoes"
-                value={formData.observacoes}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData(prev => ({ ...prev, observacoes: e.target.value }))}
-                placeholder="Observações sobre o cliente"
+              <label htmlFor="nome" className="form-label">Nome</label>
+              <input
+                type="text"
+                id="nome"
+                name="nome"
+                value={formData.nome}
+                onChange={handleChange}
+                required
                 className="form-input"
               />
             </div>
-          </div>
 
-          <div className="flex justify-end space-x-4">
-            <Button
-              type="submit"
-              className="btn-primary"
-              loading={loading}
-              disabled={loading}
-            >
-              Cadastrar
-            </Button>
-          </div>
-        </form>
+            <div>
+              <label htmlFor="documento" className="form-label">CPF/CNPJ</label>
+              <input
+                type="text"
+                id="documento"
+                name="documento"
+                value={formData.documento}
+                onChange={handleChange}
+                required
+                className="form-input"
+              />
+            </div>
+
+            <div>
+              <label htmlFor="endereco.rua" className="form-label">Rua</label>
+              <input
+                type="text"
+                id="endereco.rua"
+                name="endereco.rua"
+                value={formData.endereco.rua}
+                onChange={handleChange}
+                required
+                className="form-input"
+              />
+            </div>
+
+            <div>
+              <label htmlFor="endereco.numero" className="form-label">Número</label>
+              <input
+                type="text"
+                id="endereco.numero"
+                name="endereco.numero"
+                value={formData.endereco.numero}
+                onChange={handleChange}
+                required
+                className="form-input"
+              />
+            </div>
+
+            <div>
+              <label htmlFor="endereco.bairro" className="form-label">Bairro</label>
+              <input
+                type="text"
+                id="endereco.bairro"
+                name="endereco.bairro"
+                value={formData.endereco.bairro}
+                onChange={handleChange}
+                required
+                className="form-input"
+              />
+            </div>
+
+            <div>
+              <label htmlFor="endereco.cidade" className="form-label">Cidade</label>
+              <input
+                type="text"
+                id="endereco.cidade"
+                name="endereco.cidade"
+                value={formData.endereco.cidade}
+                onChange={handleChange}
+                required
+                className="form-input"
+              />
+            </div>
+
+            <div className="col-span-1">
+              <label htmlFor="estado" className="block text-sm font-medium text-gray-700">
+                Estado
+              </label>
+              <EstadoSelect
+                value={formData.endereco.estado}
+                onChange={(value) => handleChange({ target: { name: 'endereco.estado', value } } as any)}
+              />
+            </div>
+
+            <div>
+              <label htmlFor="endereco.cep" className="form-label">CEP</label>
+              <input
+                type="text"
+                id="endereco.cep"
+                name="endereco.cep"
+                value={formData.endereco.cep}
+                onChange={handleChange}
+                required
+                className="form-input"
+              />
+            </div>
+
+            <div>
+              <label htmlFor="observacoes" className="form-label">Observações</label>
+              <textarea
+                id="observacoes"
+                name="observacoes"
+                value={formData.observacoes}
+                onChange={handleChange}
+                rows={4}
+                className="form-input"
+              />
+            </div>
+
+            <div className="flex justify-end space-x-4">
+              <button
+                type="button"
+                onClick={() => router.back()}
+                className="btn-secondary"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                disabled={loading}
+                className="btn-primary"
+              >
+                {loading ? 'Cadastrando...' : 'Cadastrar'}
+              </button>
+            </div>
+          </form>
+        </div>
       </div>
     </div>
   );

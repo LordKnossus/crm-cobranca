@@ -3,24 +3,26 @@
 import Dashboard from '@/components/Dashboard';
 
 const dadosMock = {
-  carteiraTotal: 150000.00,
-  percentualAdimplente: 75,
-  percentualInadimplente: 25,
+  totalCarteira: 150000.00,
+  statusCarteira: {
+    adimplente: 112500.00,
+    inadimplente: 37500.00
+  },
   historicoInadimplencia: [
-    { periodo: 'Jan', percentual: 20 },
-    { periodo: 'Fev', percentual: 22 },
-    { periodo: 'Mar', percentual: 25 },
-    { periodo: 'Abr', percentual: 23 },
-    { periodo: 'Mai', percentual: 25 },
-    { periodo: 'Jun', percentual: 24 },
+    { mes: 'Janeiro', valor: 30000.00 },
+    { mes: 'Fevereiro', valor: 33000.00 },
+    { mes: 'Março', valor: 37500.00 },
+    { mes: 'Abril', valor: 34500.00 },
+    { mes: 'Maio', valor: 37500.00 },
+    { mes: 'Junho', valor: 36000.00 }
   ],
   maioresInadimplentes: [
-    { nome: 'João Silva', valor: 15000.00, diasAtraso: 45 },
-    { nome: 'Maria Santos', valor: 12000.00, diasAtraso: 30 },
-    { nome: 'Pedro Oliveira', valor: 9000.00, diasAtraso: 60 },
-    { nome: 'Ana Costa', valor: 7500.00, diasAtraso: 15 },
-    { nome: 'Carlos Souza', valor: 6000.00, diasAtraso: 90 },
-  ],
+    { nome: 'João Silva', valor: 15000.00 },
+    { nome: 'Maria Santos', valor: 12000.00 },
+    { nome: 'Pedro Oliveira', valor: 9000.00 },
+    { nome: 'Ana Costa', valor: 7500.00 },
+    { nome: 'Carlos Souza', valor: 6000.00 }
+  ]
 };
 
 export default function Home() {

@@ -1,122 +1,105 @@
-import { Card, Title, BarChart, DonutChart } from '@tremor/react';
 import { useState } from 'react';
 
 interface DashboardProps {
-  carteiraTotal: number;
-  percentualAdimplente: number;
-  percentualInadimplente: number;
+  totalCarteira: number;
+  statusCarteira: {
+    adimplente: number;
+    inadimplente: number;
+  };
   historicoInadimplencia: {
-    periodo: string;
-    percentual: number;
+    mes: string;
+    valor: number;
   }[];
   maioresInadimplentes: {
     nome: string;
     valor: number;
-    diasAtraso: number;
   }[];
 }
 
 export default function Dashboard({
-  carteiraTotal,
-  percentualAdimplente,
-  percentualInadimplente,
+  totalCarteira,
+  statusCarteira,
   historicoInadimplencia,
   maioresInadimplentes,
 }: DashboardProps) {
-  const [periodoSelecionado, setPeriodoSelecionado] = useState<'dias' | 'semanas' | 'meses'>('meses');
-
-  const dadosGraficoCarteira = [
-    {
-      name: 'Adimplente',
-      valor: percentualAdimplente,
-    },
-    {
-      name: 'Inadimplente',
-      valor: percentualInadimplente,
-    },
-  ];
-
   return (
-    <div className="p-6 space-y-6">
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        <Card>
-          <Title>Carteira Total</Title>
-          <p className="mt-2 text-2xl font-bold text-primary">
-            R$ {carteiraTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-          </p>
-        </Card>
-
-        <Card>
-          <Title>Status da Carteira</Title>
-          <DonutChart
-            className="mt-4 h-40"
-            data={dadosGraficoCarteira}
-            category="valor"
-            index="name"
-            colors={['emerald', 'red']}
-            valueFormatter={(value) => `${value.toFixed(1)}%`}
-          />
-        </Card>
-
-        <Card>
-          <Title>Histórico de Inadimplência</Title>
-          <div className="mb-4">
-            <select
-              value={periodoSelecionado}
-              onChange={(e) => setPeriodoSelecionado(e.target.value as 'dias' | 'semanas' | 'meses')}
-              className="mt-2 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring-primary"
-            >
-              <option value="dias">Últimos Dias</option>
-              <option value="semanas">Últimas Semanas</option>
-              <option value="meses">Últimos Meses</option>
-            </select>
-          </div>
-          <BarChart
-            className="mt-4 h-40"
-            data={historicoInadimplencia}
-            index="periodo"
-            categories={['percentual']}
-            colors={['red']}
-            valueFormatter={(value) => `${value.toFixed(1)}%`}
-          />
-        </Card>
+    <div className="space-y-6">
+      {/* Carteira Total */}
+      <div className="section-card">
+        <h2 className="section-title">Carteira Total</h2>
+        <div className="text-3xl font-bold text-gray-900">
+          R$ {totalCarteira.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+        </div>
       </div>
 
-      <Card>
-        <Title>Maiores Inadimplentes</Title>
-        <div className="mt-4">
+      {/* Status da Carteira */}
+      <div className="section-card">
+        <h2 className="section-title">Status da Carteira</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="bg-green-50 p-4 rounded-lg">
+            <p className="text-sm text-green-700">Adimplente</p>
+            <p className="text-2xl font-semibold text-green-800">
+              R$ {statusCarteira.adimplente.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+            </p>
+          </div>
+          <div className="bg-red-50 p-4 rounded-lg">
+            <p className="text-sm text-red-700">Inadimplente</p>
+            <p className="text-2xl font-semibold text-red-800">
+              R$ {statusCarteira.inadimplente.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Histórico de Inadimplência */}
+      <div className="section-card">
+        <h2 className="section-title">Histórico de Inadimplência</h2>
+        <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200">
             <thead>
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Cliente
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Valor
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Dias em Atraso
-                </th>
+                <th className="table-header">Mês</th>
+                <th className="table-header">Valor</th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {maioresInadimplentes.map((cliente, index) => (
-                <tr key={index}>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {cliente.nome}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    R$ {cliente.valor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {cliente.diasAtraso}
+              {historicoInadimplencia.map((item, index) => (
+                <tr key={index} className="table-row">
+                  <td className="table-cell">{item.mes}</td>
+                  <td className="table-cell">
+                    R$ {item.valor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
-      </Card>
+      </div>
+
+      {/* Maiores Inadimplentes */}
+      <div className="section-card">
+        <h2 className="section-title">Maiores Inadimplentes</h2>
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead>
+              <tr>
+                <th className="table-header">Cliente</th>
+                <th className="table-header">Valor</th>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200">
+              {maioresInadimplentes.map((cliente, index) => (
+                <tr key={index} className="table-row">
+                  <td className="table-cell">{cliente.nome}</td>
+                  <td className="table-cell">
+                    R$ {cliente.valor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
   );
 } 

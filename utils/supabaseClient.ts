@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { BuscarClientesParams, BuscarClientesResponse, Cliente, NotaDebito } from '@/types/cliente';
+import { BuscarClientesParams, BuscarClientesResponse, Cliente, NotaDebito, Endereco } from '@/types/cliente';
 
 if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
   throw new Error('NEXT_PUBLIC_SUPABASE_URL não está definida');
@@ -10,233 +10,182 @@ if (!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
 }
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
-export const supabase = createClient(supabaseUrl, supabaseKey);
+export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
-export async function buscarClientes(params: BuscarClientesParams | string): Promise<BuscarClientesResponse> {
-  try {
-    console.log('Iniciando busca de clientes com parâmetros:', params);
+interface NotaDebitoDB {
+  id: string;
+  valor: number;
+  data_vencimento: string;
+  status: 'ADIMPLENTE' | 'INADIMPLENTE';
+}
+
+interface ClienteDB {
+  id: string;
+  nome: string;
+  documento: string;
+  endereco: {
+    rua: string;
+    numero: string;
+    bairro: string;
+    cidade: string;
+    estado: string;
+    cep: string;
+    complemento?: string;
+  };
+  observacoes: string;
+  created_at: string;
+  updated_at: string;
+  notas_debito: NotaDebitoDB[];
+}
+
+export async function buscarClientes(termoBusca: string): Promise<Cliente[]> {
+  let query = supabase
+    .from('clientes')
+    .select(`
+      id,
+      nome,
+      documento,
+      endereco,
+      observacoes,
+      created_at,
+      updated_at,
+      notas_debito (
+        id,
+        valor,
+        data_vencimento
+      )
+    `);
+
+  if (termoBusca) {
+    query = query.or(`nome.ilike.%${termoBusca}%,documento.ilike.%${termoBusca}%`);
+  }
+
+  const { data, error } = await query;
+
+  if (error) {
+    console.error('Erro ao buscar clientes:', error);
+    throw error;
+  }
+
+  if (!data) {
+    return [];
+  }
+
+  return (data as ClienteDB[]).map(cliente => {
+    const notas = cliente.notas_debito || [];
+    const hoje = new Date();
     
-    let query = supabase
-      .from('clientes')
-      .select(`
-        *,
-        notas_debito (
-          id,
-          valor,
-          data_vencimento
-        )
-      `);
+    const totalDevido = notas.reduce((acc: number, nota: NotaDebitoDB) => acc + (nota.valor || 0), 0);
+    
+    const totalInadimplente = notas.reduce((acc: number, nota: NotaDebitoDB) => {
+      const dataVencimento = new Date(nota.data_vencimento);
+      return dataVencimento < hoje ? acc + (nota.valor || 0) : acc;
+    }, 0);
+    
+    const totalAdimplente = totalDevido - totalInadimplente;
+    const statusCarteira = totalInadimplente > 0 ? 'inadimplente' : 'adimplente';
 
-    if (typeof params === 'string') {
-      if (params.trim()) {
-        const searchTerm = params.trim();
-        query = query.or(`nome.ilike.%${searchTerm}%,documento.ilike.%${searchTerm}%`);
-      }
-    } else {
-      if (params.nome?.trim()) {
-        const searchTerm = params.nome.trim();
-        query = query.or(`nome.ilike.%${searchTerm}%,documento.ilike.%${searchTerm}%`);
-      }
-      if (params.documento?.trim()) {
-        query = query.ilike('documento', `%${params.documento.trim()}%`);
-      }
-      if (params.endereco?.trim()) {
-        const searchTerm = params.endereco.trim();
-        query = query.or(
-          `endereco->rua.ilike.%${searchTerm}%,` +
-          `endereco->bairro.ilike.%${searchTerm}%,` +
-          `endereco->cidade.ilike.%${searchTerm}%,` +
-          `endereco->estado.ilike.%${searchTerm}%`
-        );
-      }
-    }
-
-    const { data, error } = await query;
-
-    if (error) {
-      console.error('Erro na consulta Supabase:', error);
-      throw error;
-    }
-
-    if (!data) {
-      console.log('Nenhum cliente encontrado');
-      return { data: [], error: null };
-    }
-
-    // Calcular totais baseado apenas na data de vencimento
-    const clientesComTotais = data.map((cliente: any) => {
-      const notasDebito = cliente.notas_debito || [];
-      const totalDevido = notasDebito.reduce((acc: number, nota: any) => acc + (nota.valor || 0), 0);
-      
-      // Calcular totais baseado apenas na data de vencimento
-      const hoje = new Date();
-      const totalInadimplente = notasDebito
-        .filter((nota: any) => {
-          const dataVencimento = new Date(nota.data_vencimento);
-          return dataVencimento < hoje;
-        })
-        .reduce((acc: number, nota: any) => acc + (nota.valor || 0), 0);
-      
-      const totalAdimplente = totalDevido - totalInadimplente;
-
-      // Formatar as notas com o status
-      const notasFormatadas = notasDebito.map((nota: any) => {
+    return {
+      id: cliente.id,
+      nome: cliente.nome,
+      documento: cliente.documento,
+      endereco: cliente.endereco,
+      observacoes: cliente.observacoes || '',
+      totalDevido,
+      totalAdimplente,
+      totalInadimplente,
+      statusCarteira,
+      notas: notas.map((nota: NotaDebitoDB) => {
         const dataVencimento = new Date(nota.data_vencimento);
-        const status = dataVencimento < hoje ? 'INADIMPLENTE' : 'ADIMPLENTE';
-        
+        const status = dataVencimento < hoje ? 'atrasado' : 'pendente';
         return {
           id: nota.id,
           valor: nota.valor,
           dataVencimento: nota.data_vencimento,
           status
         };
-      });
-
-      return {
-        ...cliente,
-        totalDevido,
-        totalAdimplente,
-        totalInadimplente,
-        notas: notasFormatadas
-      };
-    });
-
-    console.log(`Encontrados ${clientesComTotais.length} clientes`);
-    return { data: clientesComTotais, error: null };
-  } catch (error) {
-    console.error('Erro ao buscar clientes:', error);
-    return { data: [], error: error as Error };
-  }
+      })
+    };
+  });
 }
 
-export async function cadastrarCliente(cliente: Omit<Cliente, 'id' | 'created_at' | 'updated_at'>) {
+interface ClienteForm {
+  nome: string;
+  documento: string;
+  endereco: Endereco;
+  observacoes?: string;
+}
+
+export async function cadastrarCliente(cliente: ClienteForm) {
+  // Verificar se já existe um cliente com o mesmo documento
+  const { data: clienteExistente, error: erroBusca } = await supabase
+    .from('clientes')
+    .select('id')
+    .eq('documento', cliente.documento)
+    .single();
+
+  if (erroBusca && erroBusca.code !== 'PGRST116') { // PGRST116 é o código para "nenhum resultado encontrado"
+    throw new Error('Erro ao verificar documento duplicado');
+  }
+
+  if (clienteExistente) {
+    throw new Error('Já existe um cliente cadastrado com este CPF/CNPJ');
+  }
+
   const now = new Date().toISOString();
   
   const { data, error } = await supabase
     .from('clientes')
     .insert([{
-      ...cliente,
+      nome: cliente.nome,
+      documento: cliente.documento,
+      endereco: cliente.endereco,
+      observacoes: cliente.observacoes || '',
       created_at: now,
       updated_at: now
     }])
-    .select()
-    .single();
+    .select();
 
   if (error) {
-    throw new Error(error.message);
+    throw error;
   }
 
-  return data;
+  return data[0];
 }
 
-export async function buscarClientePorId(id: number) {
-  try {
-    const { data, error } = await supabase
-      .from('clientes')
-      .select(`
-        *,
-        notas_debito (
-          id,
-          valor,
-          data_vencimento
-        )
-      `)
-      .eq('id', id)
-      .single();
+export async function atualizarCliente(id: string, cliente: Partial<Cliente>) {
+  const now = new Date().toISOString();
+  
+  const { data, error } = await supabase
+    .from('clientes')
+    .update({
+      nome: cliente.nome,
+      documento: cliente.documento,
+      endereco: cliente.endereco,
+      observacoes: cliente.observacoes,
+      updated_at: now
+    })
+    .eq('id', id)
+    .select();
 
-    if (error) {
-      throw error;
-    }
-
-    // Calcular totais baseado apenas na data de vencimento
-    const hoje = new Date();
-    const notasDebito = data.notas_debito || [];
-    const totalDevido = notasDebito.reduce((acc: number, nota: any) => acc + (nota.valor || 0), 0);
-    const totalInadimplente = notasDebito
-      .filter((nota: any) => {
-        const dataVencimento = new Date(nota.data_vencimento);
-        return dataVencimento < hoje;
-      })
-      .reduce((acc: number, nota: any) => acc + (nota.valor || 0), 0);
-    const totalAdimplente = totalDevido - totalInadimplente;
-
-    // Formatar as notas com o status
-    const notasFormatadas = notasDebito.map((nota: any) => {
-      const dataVencimento = new Date(nota.data_vencimento);
-      const status = dataVencimento < hoje ? 'INADIMPLENTE' : 'ADIMPLENTE';
-      
-      return {
-        id: nota.id,
-        valor: nota.valor,
-        dataVencimento: nota.data_vencimento,
-        status
-      };
-    });
-
-    // Formatar o cliente de acordo com a interface Cliente
-    const clienteFormatado = {
-      id: data.id,
-      nome: data.nome,
-      documento: data.documento,
-      endereco: {
-        rua: data.endereco?.rua || '',
-        numero: data.endereco?.numero || '',
-        bairro: data.endereco?.bairro || '',
-        cidade: data.endereco?.cidade || '',
-        estado: data.endereco?.estado || '',
-        cep: data.endereco?.cep || ''
-      },
-      observacoes: data.observacoes || '',
-      totalDevido,
-      totalAdimplente,
-      totalInadimplente,
-      notas: notasFormatadas
-    };
-
-    return { data: clienteFormatado, error: null };
-  } catch (error) {
-    console.error('Erro ao buscar cliente:', error);
-    return { data: null, error };
-  }
-}
-
-export async function atualizarCliente(id: number, dados: Partial<Cliente>) {
-  try {
-    const { data, error } = await supabase
-      .from('clientes')
-      .update(dados)
-      .eq('id', id)
-      .select()
-      .single();
-
-    if (error) {
-      throw error;
-    }
-
-    return { data, error: null };
-  } catch (error) {
+  if (error) {
     console.error('Erro ao atualizar cliente:', error);
-    return { data: null, error };
+    throw error;
   }
+
+  return data[0];
 }
 
-export async function excluirCliente(id: number) {
-  try {
-    const { error } = await supabase
-      .from('clientes')
-      .delete()
-      .eq('id', id);
+export async function excluirCliente(id: string) {
+  const { error } = await supabase
+    .from('clientes')
+    .delete()
+    .eq('id', id);
 
-    if (error) {
-      throw error;
-    }
-
-    return { error: null };
-  } catch (error) {
-    console.error('Erro ao excluir cliente:', error);
-    return { error };
+  if (error) {
+    throw error;
   }
 }
 
@@ -258,4 +207,70 @@ export async function inserirNotaDebito(nota: Omit<NotaDebito, 'id' | 'created_a
   }
 
   return data;
+}
+
+export async function buscarClientePorId(id: string): Promise<Cliente> {
+  const { data, error } = await supabase
+    .from('clientes')
+    .select(`
+      id,
+      nome,
+      documento,
+      endereco,
+      observacoes,
+      created_at,
+      updated_at,
+      notas_debito (
+        id,
+        valor,
+        data_vencimento
+      )
+    `)
+    .eq('id', id)
+    .single();
+
+  if (error) {
+    console.error('Erro ao buscar cliente:', error);
+    throw error;
+  }
+
+  if (!data) {
+    throw new Error('Cliente não encontrado');
+  }
+
+  const clienteDB = data as ClienteDB;
+  const notas = clienteDB.notas_debito || [];
+  const hoje = new Date();
+  
+  const totalDevido = notas.reduce((acc: number, nota: NotaDebitoDB) => acc + (nota.valor || 0), 0);
+  
+  const totalInadimplente = notas.reduce((acc: number, nota: NotaDebitoDB) => {
+    const dataVencimento = new Date(nota.data_vencimento);
+    return dataVencimento < hoje ? acc + (nota.valor || 0) : acc;
+  }, 0);
+  
+  const totalAdimplente = totalDevido - totalInadimplente;
+  const statusCarteira = totalInadimplente > 0 ? 'inadimplente' : 'adimplente';
+
+  return {
+    id: clienteDB.id,
+    nome: clienteDB.nome,
+    documento: clienteDB.documento,
+    endereco: clienteDB.endereco,
+    observacoes: clienteDB.observacoes || '',
+    totalDevido,
+    totalAdimplente,
+    totalInadimplente,
+    statusCarteira,
+    notas: notas.map((nota: NotaDebitoDB) => {
+      const dataVencimento = new Date(nota.data_vencimento);
+      const status = dataVencimento < hoje ? 'atrasado' : 'pendente';
+      return {
+        id: nota.id,
+        valor: nota.valor,
+        dataVencimento: nota.data_vencimento,
+        status
+      };
+    })
+  };
 } 

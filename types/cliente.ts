@@ -16,22 +16,21 @@ export interface NotaDebito {
 }
 
 export interface Cliente {
-  id: number;
+  id: string;
   nome: string;
   documento: string;
-  endereco: {
-    rua: string;
-    numero: string;
-    bairro: string;
-    cidade: string;
-    estado: string;
-    cep: string;
-  };
-  observacoes?: string;
+  endereco: Endereco;
+  observacoes: string;
   totalDevido: number;
+  statusCarteira: 'adimplente' | 'inadimplente';
   totalAdimplente: number;
   totalInadimplente: number;
-  notas: NotaDebito[];
+  notas: Array<{
+    id: string;
+    valor: number;
+    dataVencimento: string;
+    status: 'pago' | 'pendente' | 'atrasado';
+  }>;
 }
 
 export interface BuscarClientesParams {

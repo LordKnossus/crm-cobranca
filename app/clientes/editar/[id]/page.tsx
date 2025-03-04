@@ -1,232 +1,245 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Card, Title, TextInput, Button } from '@tremor/react';
 import { useRouter } from 'next/navigation';
 import { formatDocument } from '@/utils/documentValidation';
 import BackButton from '@/components/BackButton';
-
-interface Cliente {
-  id: number;
-  nome: string;
-  documento: string;
-  observacoes: string;
-  endereco: {
-    rua: string;
-    numero: string;
-    bairro: string;
-    cidade: string;
-    estado: string;
-    cep: string;
-  };
-}
+import { buscarClientePorId, atualizarCliente } from '@/utils/supabaseClient';
+import { Cliente } from '@/types/cliente';
+import EstadoSelect from '@/components/EstadoSelect';
 
 export default function EditarCliente({ params }: { params: { id: string } }) {
+  const [cliente, setCliente] = useState<Cliente | null>(null);
+  const [carregando, setCarregando] = useState(true);
+  const [erro, setErro] = useState<string | null>(null);
+  const [salvando, setSalvando] = useState(false);
   const router = useRouter();
-  const [cliente, setCliente] = useState<Cliente>({
-    id: 0,
-    nome: '',
-    documento: '',
-    observacoes: '',
-    endereco: {
-      rua: '',
-      numero: '',
-      bairro: '',
-      cidade: '',
-      estado: '',
-      cep: '',
-    },
-  });
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string>('');
 
   useEffect(() => {
-    const fetchCliente = async () => {
-      try {
-        const response = await fetch(`/api/clientes/${params.id}`);
-        if (!response.ok) {
-          throw new Error('Erro ao carregar dados do cliente');
-        }
-        const data = await response.json();
-        if (!data) {
-          throw new Error('Cliente não encontrado');
-        }
-        setCliente({
-          id: data.id,
-          nome: data.nome,
-          documento: data.documento,
-          observacoes: data.observacoes || '',
-          endereco: {
-            rua: data.endereco?.rua || '',
-            numero: data.endereco?.numero || '',
-            bairro: data.endereco?.bairro || '',
-            cidade: data.endereco?.cidade || '',
-            estado: data.endereco?.estado || '',
-            cep: data.endereco?.cep || '',
-          },
-        });
-      } catch (err: any) {
-        setError(err.message);
-      }
-    };
-
-    fetchCliente();
+    carregarCliente();
   }, [params.id]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError('');
-    setLoading(true);
-
+  const carregarCliente = async () => {
     try {
-      const response = await fetch(`/api/clientes/${params.id}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(cliente),
-      });
-
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.message || 'Erro ao atualizar cliente');
-      }
-
-      router.push('/clientes/gerenciar');
-      router.refresh();
-    } catch (err: any) {
-      setError(err.message);
+      const clienteData = await buscarClientePorId(params.id);
+      setCliente(clienteData);
+    } catch (error) {
+      setErro('Erro ao carregar dados do cliente.');
+      console.error('Erro ao carregar cliente:', error);
     } finally {
-      setLoading(false);
+      setCarregando(false);
     }
   };
 
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!cliente) return;
+
+    setSalvando(true);
+    setErro(null);
+
+    try {
+      await atualizarCliente(cliente.id, cliente);
+      router.push('/clientes/gerenciar');
+    } catch (error) {
+      setErro('Erro ao salvar alterações.');
+      console.error('Erro ao atualizar cliente:', error);
+    } finally {
+      setSalvando(false);
+    }
+  };
+
+  if (carregando) {
+    return (
+      <div className="container mx-auto px-4 py-8">
+        <div className="text-center text-gray-500">Carregando...</div>
+      </div>
+    );
+  }
+
+  if (!cliente) {
+    return (
+      <div className="container mx-auto px-4 py-8">
+        <div className="text-center text-red-500">Cliente não encontrado.</div>
+      </div>
+    );
+  }
+
   return (
-    <div className="p-4 md:p-10 mx-auto max-w-7xl">
-      <BackButton />
-      <Card className="mt-6">
-        <Title>Editar Cliente</Title>
-        {error && <p className="text-red-500 mt-4">{error}</p>}
-        <form onSubmit={handleSubmit} className="mt-4 space-y-4">
+    <div className="container mx-auto px-4 py-8">
+      <div className="mb-8">
+        <BackButton />
+      </div>
+
+      <div className="bg-white rounded-lg shadow-md p-6">
+        <h1 className="text-2xl font-bold text-gray-900 mb-6">Editar Cliente</h1>
+
+        {erro && (
+          <div className="mb-4 p-4 bg-red-50 text-red-700 rounded-md">
+            {erro}
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} className="space-y-6">
           <div>
-            <label className="block text-sm font-medium text-gray-700">Nome</label>
-            <TextInput
-              name="nome"
+            <label htmlFor="nome" className="block text-sm font-medium text-gray-700">
+              Nome
+            </label>
+            <input
+              type="text"
+              id="nome"
               value={cliente.nome}
-              onChange={(e) => setCliente(prev => ({ ...prev, nome: e.target.value }))}
-              placeholder="Nome do cliente"
+              onChange={(e) => setCliente({ ...cliente, nome: e.target.value })}
+              className="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500"
               required
             />
           </div>
+
           <div>
-            <label className="block text-sm font-medium text-gray-700">CPF/CNPJ</label>
-            <TextInput
-              name="documento"
-              value={cliente.documento}
+            <label htmlFor="documento" className="block text-sm font-medium text-gray-700">
+              CPF/CNPJ
+            </label>
+            <input
+              type="text"
+              id="documento"
+              value={formatDocument(cliente.documento)}
               disabled
-              placeholder="000.000.000-00 ou 00.000.000/0000-00"
+              className="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-md bg-gray-50"
             />
           </div>
+
           <div>
-            <label className="block text-sm font-medium text-gray-700">Observações</label>
-            <TextInput
-              name="observacoes"
+            <label htmlFor="endereco" className="block text-sm font-medium text-gray-700">
+              Endereço
+            </label>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label htmlFor="rua" className="block text-sm font-medium text-gray-700">
+                  Rua
+                </label>
+                <input
+                  type="text"
+                  id="rua"
+                  value={cliente.endereco.rua}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setCliente({ 
+                    ...cliente, 
+                    endereco: { ...cliente.endereco, rua: e.target.value }
+                  })}
+                  className="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500"
+                  required
+                />
+              </div>
+              <div>
+                <label htmlFor="numero" className="block text-sm font-medium text-gray-700">
+                  Número
+                </label>
+                <input
+                  type="text"
+                  id="numero"
+                  value={cliente.endereco.numero}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setCliente({ 
+                    ...cliente, 
+                    endereco: { ...cliente.endereco, numero: e.target.value }
+                  })}
+                  className="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500"
+                  required
+                />
+              </div>
+              <div>
+                <label htmlFor="bairro" className="block text-sm font-medium text-gray-700">
+                  Bairro
+                </label>
+                <input
+                  type="text"
+                  id="bairro"
+                  value={cliente.endereco.bairro}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setCliente({ 
+                    ...cliente, 
+                    endereco: { ...cliente.endereco, bairro: e.target.value }
+                  })}
+                  className="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500"
+                  required
+                />
+              </div>
+              <div>
+                <label htmlFor="cidade" className="block text-sm font-medium text-gray-700">
+                  Cidade
+                </label>
+                <input
+                  type="text"
+                  id="cidade"
+                  value={cliente.endereco.cidade}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setCliente({ 
+                    ...cliente, 
+                    endereco: { ...cliente.endereco, cidade: e.target.value }
+                  })}
+                  className="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500"
+                  required
+                />
+              </div>
+              <div className="col-span-1">
+                <label htmlFor="estado" className="block text-sm font-medium text-gray-700">
+                  Estado
+                </label>
+                <EstadoSelect
+                  value={cliente.endereco.estado}
+                  onChange={(value) => setCliente({ 
+                    ...cliente, 
+                    endereco: { ...cliente.endereco, estado: value }
+                  })}
+                />
+              </div>
+              <div>
+                <label htmlFor="cep" className="block text-sm font-medium text-gray-700">
+                  CEP
+                </label>
+                <input
+                  type="text"
+                  id="cep"
+                  value={cliente.endereco.cep}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setCliente({ 
+                    ...cliente, 
+                    endereco: { ...cliente.endereco, cep: e.target.value }
+                  })}
+                  className="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500"
+                  required
+                />
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <label htmlFor="observacoes" className="block text-sm font-medium text-gray-700">
+              Observações
+            </label>
+            <textarea
+              id="observacoes"
               value={cliente.observacoes}
-              onChange={(e) => setCliente(prev => ({ ...prev, observacoes: e.target.value }))}
-              placeholder="Observações sobre o cliente"
+              onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setCliente({ ...cliente, observacoes: e.target.value })}
+              rows={3}
+              className="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500"
+              required
             />
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700">Rua</label>
-              <TextInput
-                name="rua"
-                value={cliente.endereco.rua}
-                onChange={(e) => setCliente(prev => ({
-                  ...prev,
-                  endereco: { ...prev.endereco, rua: e.target.value }
-                }))}
-                placeholder="Rua"
-                required
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700">Número</label>
-              <TextInput
-                name="numero"
-                value={cliente.endereco.numero}
-                onChange={(e) => setCliente(prev => ({
-                  ...prev,
-                  endereco: { ...prev.endereco, numero: e.target.value }
-                }))}
-                placeholder="Número"
-                required
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700">Bairro</label>
-              <TextInput
-                name="bairro"
-                value={cliente.endereco.bairro}
-                onChange={(e) => setCliente(prev => ({
-                  ...prev,
-                  endereco: { ...prev.endereco, bairro: e.target.value }
-                }))}
-                placeholder="Bairro"
-                required
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700">Cidade</label>
-              <TextInput
-                name="cidade"
-                value={cliente.endereco.cidade}
-                onChange={(e) => setCliente(prev => ({
-                  ...prev,
-                  endereco: { ...prev.endereco, cidade: e.target.value }
-                }))}
-                placeholder="Cidade"
-                required
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700">Estado</label>
-              <TextInput
-                name="estado"
-                value={cliente.endereco.estado}
-                onChange={(e) => setCliente(prev => ({
-                  ...prev,
-                  endereco: { ...prev.endereco, estado: e.target.value }
-                }))}
-                placeholder="Estado"
-                required
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700">CEP</label>
-              <TextInput
-                name="cep"
-                value={cliente.endereco.cep}
-                onChange={(e) => setCliente(prev => ({
-                  ...prev,
-                  endereco: { ...prev.endereco, cep: e.target.value }
-                }))}
-                placeholder="CEP"
-                required
-              />
-            </div>
-          </div>
-          <div className="flex justify-end">
-            <Button
-              type="submit"
-              loading={loading}
-              disabled={loading}
+
+          <div className="flex justify-end space-x-4">
+            <button
+              type="button"
+              onClick={() => router.push('/clientes/gerenciar')}
+              className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-orange-500"
             >
-              Salvar
-            </Button>
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              disabled={salvando}
+              className="px-4 py-2 bg-orange-500 text-white rounded-md hover:bg-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-500 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {salvando ? 'Salvando...' : 'Salvar Alterações'}
+            </button>
           </div>
         </form>
-      </Card>
+      </div>
     </div>
   );
 } 
