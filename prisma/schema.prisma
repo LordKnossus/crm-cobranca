@@ -1,0 +1,95 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Usuario {
+  id        Int      @id @default(autoincrement())
+  nome      String
+  email     String   @unique
+  senha     String
+  notas     Nota[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Cliente {
+  id           Int      @id @default(autoincrement())
+  nome         String
+  documento    String   @unique @map("cpf") // Pode ser CPF ou CNPJ
+  observacoes  String?
+  endereco     Json
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  notas        Nota[]
+}
+
+model Nota {
+  id             Int             @id @default(autoincrement())
+  numero         String          @unique
+  valor          Float
+  dataEmissao    DateTime       @default(now())
+  dataVencimento DateTime
+  status         String         @default("PENDENTE") // PENDENTE, PAGA, NEGOCIADA, CANCELADA
+  observacoes    String?
+  cliente        Cliente        @relation(fields: [clienteId], references: [id])
+  clienteId      Int
+  usuario        Usuario        @relation(fields: [usuarioId], references: [id])
+  usuarioId      Int
+  pagamentos     Pagamento[]
+  historico      HistoricoNota[]
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+}
+
+model Pagamento {
+  id            Int      @id @default(autoincrement())
+  valor         Float
+  dataPagamento DateTime @default(now())
+  formaPagamento String
+  comprovante   String?
+  nota          Nota     @relation(fields: [notaId], references: [id])
+  notaId        Int
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model HistoricoNota {
+  id          Int      @id @default(autoincrement())
+  data        DateTime @default(now())
+  descricao   String
+  nota        Nota     @relation(fields: [notaId], references: [id])
+  notaId      Int
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+enum StatusNota {
+  PENDENTE
+  PAGO
+  RENEGOCIADO
+  PERDIDO
+}
+
+enum TipoPagamento {
+  DINHEIRO
+  PIX
+  CREDITO
+  DEBITO
+}
+
+enum AcaoNota {
+  CRIACAO
+  EDICAO
+  EXCLUSAO
+  RENEGOCIACAO
+  RECEBIMENTO
+  BAIXA
+} 
